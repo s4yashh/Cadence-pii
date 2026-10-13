@@ -1,0 +1,37 @@
+# Local environments and generated Python/package files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store
+
+# Input evidence, extracted content, and generated reports
+Case Study 2 Supporting Material/
+Cadence_PII_Results*.zip
+cadence_outputs/
+outputs/
+scratch/
+evaluation/gold/
+evaluation/results/
+
+# Internal notes and local tool configuration
+handoff.md
+claude_opus_5_5_case_study_2_master_prompt.md
+docs/
+opencode.json
+
+# Credentials and local overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
