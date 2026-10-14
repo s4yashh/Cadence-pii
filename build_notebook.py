@@ -138,9 +138,9 @@ else:
     print('No sign-off entered; review-required files remain withheld.')"""),
         md("""## Export and cleanup
 
-The ZIP contains redacted text, a masked audit report and `ai_ready` copies for cleared files only. Source uploads are excluded. Keep the archive private: redacted text can still contain OCR misses. The last cell can remove uploaded input copies after you have finished reviewing the source."""),
+The ZIP contains redacted text, a masked audit report, visual drafts in `layout_review`, text-only `review_copies`, and `ai_ready` text for cleared files only. The layout-preserving PowerPoint replaces PII in editable shapes and tables but retains pictures. The PDF visual draft masks PII located by OCR in rendered pages; its statistics report how many pipeline findings could not be positioned. The Word review draft preserves original paragraphs and tables but **does not redact embedded pictures**; its statistics report known image findings. **All visual drafts are private review material, not approved for AI or external sharing.** Source uploads are excluded. Keep the archive private: OCR and detection can miss PII. The last cell can remove uploaded input copies after you have finished reviewing the source."""),
         code("""from cadence_pii.report import export
-out_dir = export(results, 'cadence_outputs')
+out_dir = export(results, 'cadence_outputs', source_paths=paths)
 archive = shutil.make_archive('Cadence_PII_Results', 'zip', root_dir=out_dir)
 print('Export:', archive)
 if IN_COLAB:

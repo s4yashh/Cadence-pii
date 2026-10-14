@@ -52,11 +52,27 @@ def audit_record(r) -> dict:
     }
 
 
-def export(results, outdir="outputs") -> Path:
-    """Write redacted text for every processed file, AI-ready copies only for CLEARED files, plus audit files."""
+def export(results, outdir="outputs", source_paths=None) -> Path:
+    """Write text outputs, masked audit files and text-only same-format review copies."""
+    from .review_copies import NOTICE, export_review_copy
+
     out = Path(outdir)
     (out / "redacted").mkdir(parents=True, exist_ok=True)
     (out / "ai_ready").mkdir(parents=True, exist_ok=True)
+    review_dir = out / "review_copies"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    layout_dir = out / "layout_review"
+    layout_dir.mkdir(parents=True, exist_ok=True)
+    sources = {Path(path).name: Path(path) for path in (source_paths or [])}
+    layout_notes = ["Original-layout visual review drafts. PRIVATE REVIEW ONLY.",
+                    "PowerPoint: editable PII text is replaced in the original shapes and tables.",
+                    "PDF: pages are rasterised and OCR-located PII pixels are painted over.",
+                    "Word: editable PII text is replaced in original paragraphs and tables; pictures remain.",
+                    "OCR misses, unmatched PII, source pictures and other non-editable content may remain.",
+                    "These files are not AI-ready or approved for external sharing.", ""]
+    review_notes = [NOTICE, "These files reconstruct extracted text; they are not edits of the originals.",
+                    "Source images and hidden layers are excluded. Compare privately with the originals.",
+                    "Only files in ai_ready are eligible for the downstream AI boundary.", ""]
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for r in results:
         stem = Path(r.filename).stem
@@ -68,6 +84,60 @@ def export(results, outdir="outputs") -> Path:
             ai.write_text(r.redacted_text, encoding="utf-8")
         elif ai.exists():
             ai.unlink()  # never leave a stale release behind
+        review_target = review_dir / f"{stem}.review{Path(r.filename).suffix.lower()}"
+        review_target.unlink(missing_ok=True)  # never leave a stale review copy behind
+        if r.status in (Status.CLEARED, Status.REVIEW_REQUIRED):
+            try:
+                export_review_copy(r, review_dir)
+                review_notes.append(f"Created: {review_target.name} ({r.status.value})")
+            except Exception as exc:
+                review_target.unlink(missing_ok=True)
+                review_notes.append(f"Not created: {r.filename} ({type(exc).__name__}: {exc})")
+        if Path(r.filename).suffix.lower() == ".pptx" and r.filename in sources:
+            from .layout_pptx import redact_original_pptx
+
+            layout_target = layout_dir / f"{stem}.layout_redacted.pptx"
+            layout_target.unlink(missing_ok=True)
+            try:
+                redact_original_pptx(sources[r.filename], r, layout_target)
+                layout_notes.append(f"Created: {layout_target.name} ({r.status.value})")
+            except Exception as exc:
+                layout_target.unlink(missing_ok=True)
+                layout_notes.append(f"Not created: {r.filename} ({type(exc).__name__}: {exc})")
+        if Path(r.filename).suffix.lower() == ".pdf" and r.filename in sources:
+            from .layout_pdf import redact_scanned_pdf_for_review
+
+            layout_target = layout_dir / f"{stem}.visual_redaction_draft.pdf"
+            stats_target = layout_dir / f"{stem}.visual_redaction_stats.json"
+            layout_target.unlink(missing_ok=True)
+            stats_target.unlink(missing_ok=True)
+            try:
+                stats = redact_scanned_pdf_for_review(sources[r.filename], r, layout_target)
+                stats_target.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+                layout_notes.append(f"Created: {layout_target.name} ({r.status.value}); "
+                                    f"{stats['source_findings_unmatched']} source finding(s) not OCR-located")
+            except Exception as exc:
+                layout_target.unlink(missing_ok=True)
+                stats_target.unlink(missing_ok=True)
+                layout_notes.append(f"Not created: {r.filename} ({type(exc).__name__}: {exc})")
+        if Path(r.filename).suffix.lower() == ".docx" and r.filename in sources:
+            from .layout_docx import redact_original_docx
+
+            layout_target = layout_dir / f"{stem}.editable_text_redacted.review.docx"
+            stats_target = layout_dir / f"{stem}.editable_text_redaction_stats.json"
+            layout_target.unlink(missing_ok=True)
+            stats_target.unlink(missing_ok=True)
+            try:
+                stats = redact_original_docx(sources[r.filename], r, layout_target)
+                stats_target.write_text(json.dumps(stats, indent=2), encoding="utf-8")
+                layout_notes.append(f"Created: {layout_target.name} ({r.status.value}); "
+                                    f"{stats['known_image_findings_not_redacted']} image finding(s) remain")
+            except Exception as exc:
+                layout_target.unlink(missing_ok=True)
+                stats_target.unlink(missing_ok=True)
+                layout_notes.append(f"Not created: {r.filename} ({type(exc).__name__}: {exc})")
+    (review_dir / "README.txt").write_text("\n".join(review_notes) + "\n", encoding="utf-8")
+    (layout_dir / "README.txt").write_text("\n".join(layout_notes) + "\n", encoding="utf-8")
     audit = {"generated_at": stamp, "files": [audit_record(r) for r in results]}
     (out / "audit_report.json").write_text(json.dumps(audit, indent=2, default=str), encoding="utf-8")
     rows = []

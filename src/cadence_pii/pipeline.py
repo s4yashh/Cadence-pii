@@ -129,4 +129,4 @@ if __name__ == "__main__":
     from .report import export, summary_table
     res = run_batch(sys.argv[1:])
     print(summary_table(res).to_string())
-    print("exported to", export(res, "outputs"))
+    print("exported to", export(res, "outputs", source_paths=sys.argv[1:]))
